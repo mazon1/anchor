@@ -1,38 +1,49 @@
-import os
 import streamlit as st
-from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+import google.generativeai as genai
+import os
 import av
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+from datetime import datetime
+from textwrap import dedent
 import random
-import requests
 
-# Define API Key and Gemini API Endpoint
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', st.secrets["GOOGLE_API_KEY"])
-GEMINI_API_ENDPOINT = "https://gemini-api.google.com/v2"
-HEADERS = {
-    "Authorization": f"Bearer {GOOGLE_API_KEY}",
-    "Content-Type": "application/json"
-}
+# Set up the API key
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', st.secrets.get("GOOGLE_API_KEY"))
+if not GOOGLE_API_KEY:
+    st.error("Google API Key is missing. Please configure it in your environment or secrets.")
+    st.stop()
 
-# Page Configuration
-st.set_page_config(page_title="Anchor App", layout="wide")
+genai.configure(api_key=GOOGLE_API_KEY)
 
-# Generate Personalized Insights
-@st.cache_data
-def get_motivational_quote():
+# Function to generate personalized insights
+def get_personalized_insights():
     try:
-        response = requests.post(
-            GEMINI_API_ENDPOINT + "/generate-text",
-            headers=HEADERS,
-            json={"prompt": "Generate a motivational quote for a care provider."}
-        )
-        response.raise_for_status()
-        return response.json().get("text", "Keep making a difference!")
-    except requests.exceptions.RequestException as e:
-        st.error(f"API error: {e}")
-        return "Unable to fetch motivational quote at this time."
+        prompt = "Generate a motivational quote for a care provider supporting trauma patients."
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"Error generating insights: {e}")
+        return "Keep making a difference!"
 
-# Audio Processor for Live Transcription
+# Function to generate AI-assisted analysis
+def ai_assisted_analysis(text):
+    try:
+        prompt = dedent(f"""
+            Analyze the following patient input and identify:
+            1. Emotional tone
+            2. Conversation patterns
+            3. Any risks (e.g., relapse likelihood, housing insecurity)
+            Input: {text}
+        """)
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"Error generating analysis: {e}")
+        return "Unable to analyze patient input."
+
+# Audio Processor for live transcription
 class AudioProcessor(AudioProcessorBase):
     def __init__(self):
         self.audio_queue = []
@@ -47,38 +58,40 @@ class AudioProcessor(AudioProcessorBase):
         try:
             audio_data = b"".join(self.audio_queue)
             self.audio_queue.clear()
-            response = requests.post(
-                GEMINI_API_ENDPOINT + "/transcribe-audio",
-                headers=HEADERS,
-                files={"audio": ("audio.wav", audio_data, "audio/wav")}
-            )
-            response.raise_for_status()
-            self.transcription = response.json().get("transcription", "Transcription unavailable.")
-        except requests.exceptions.RequestException as e:
-            st.error(f"Transcription API error: {e}")
+            prompt = "Transcribe this audio data."
+            model = genai.GenerativeModel('gemini-pro')
+            response = model.generate_content(prompt, audio=audio_data)
+            self.transcription = response.text.strip()
+        except Exception as e:
+            st.error(f"Error transcribing audio: {e}")
             self.transcription = "Transcription unavailable."
         return self.transcription
 
-# Core Pages
+# Main app
 menu = st.sidebar.selectbox(
     "Navigation", ["Home", "Screening", "Referral", "Follow-Up", "Admin Dashboard"]
 )
 
 if menu == "Home":
-    st.title("Welcome to Anchor")
-    st.subheader("Your Dashboard")
+    st.title("Welcome to Anchor App")
+    st.subheader("Dashboard")
 
     st.write("**Personalized Insights**")
-    st.info(get_motivational_quote())
+    st.info(get_personalized_insights())
+
+    st.subheader("Quick Access")
+    st.markdown("- [Screening Page](#)")
+    st.markdown("- [Follow-Up Tasks](#)")
+    st.markdown("- [Reports](#)")
 
     st.subheader("Community Highlights")
     for _ in range(3):
-        st.write(f"- Today, feeling {random.choice(['hopeful', 'anxious', 'grateful'])}, you {random.choice(['supported a patient', 'collaborated with peers', 'celebrated a small victory'])}.")
+        st.write(f"- {random.choice(['You held space for a patient milestone.', 'You supported a peer through a tough case.', 'You helped celebrate a small but significant victory.'])}")
 
 elif menu == "Screening":
     st.title("Screening Page")
 
-    st.write("Use multimodal inputs for comprehensive screening.")
+    st.write("**Multimodal Input**")
     text_input = st.text_area("Describe the patient's current situation:")
 
     st.subheader("Audio Recording")
@@ -92,15 +105,57 @@ elif menu == "Screening":
         transcription = audio_processor.transcribe_audio()
         st.write("**Transcription:**", transcription)
 
-        response = requests.post(
-            GEMINI_API_ENDPOINT + "/analyze-text",
-            headers=HEADERS,
-            json={"text": transcription}
-        )
-        analysis = response.json().get("analysis", "No analysis available.")
-        st.write("**AI Analysis:**", analysis)
+        analysis = ai_assisted_analysis(transcription or text_input)
+        st.write("**AI-Assisted Analysis:**", analysis)
 
-# (Other pages remain the same)
+elif menu == "Referral":
+    st.title("Referral Page")
 
+    st.subheader("Resource Recommendations")
+    st.write("- Local Counseling Center")
+    st.write("- Shelter Nearby")
+
+    st.subheader("Referral Tracking")
+    st.table({
+        "Referral ID": ["R001", "R002"],
+        "Status": ["Pending", "Completed"],
+        "Date": ["2024-12-05", "2024-12-10"]
+    })
+
+elif menu == "Follow-Up":
+    st.title("Follow-Up Page")
+
+    st.subheader("Follow-Up Scheduler")
+    st.write("- [Dec 15, 2024] Counseling session at 2 PM")
+    st.write("- [Dec 20, 2024] Group support meeting at 5 PM")
+
+    st.subheader("Progress Updates")
+    update = st.text_area("Enter progress updates:")
+    if st.button("Submit Update"):
+        st.success("Progress update submitted!")
+
+    st.subheader("HAR Data Insights")
+    st.line_chart({"Days": [1, 2, 3, 4], "Activity": [10, 20, 15, 25]})
+
+elif menu == "Admin Dashboard":
+    st.title("Admin Dashboard")
+
+    st.subheader("Case Management")
+    st.table({
+        "Patient ID": ["P001", "P002"],
+        "Status": ["In Progress", "Completed"],
+        "Last Update": ["2024-12-01", "2024-12-05"]
+    })
+
+    st.subheader("Efficiency Metrics")
+    st.write("Screening efficiency: 85%")
+    st.write("Referral response time: 2 days")
+
+    st.subheader("Guideline Management")
+    guideline_file = st.file_uploader("Upload PDF guidelines:", type="pdf")
+    if guideline_file:
+        st.success("Guidelines uploaded successfully!")
+
+# Footer
 st.write("---")
 st.write("Powered by Streamlit and Google Gemini")
