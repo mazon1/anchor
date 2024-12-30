@@ -9,3 +9,5 @@ plotly
 av
 requests
 pandas
+audio-recorder-streamlit
+python-dotenv
