@@ -1,5 +1,6 @@
 streamlit
 streamlit-webrtc
+SpeechRecognition
 numpy
 scipy
 google-generativeai
