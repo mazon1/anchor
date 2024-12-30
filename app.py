@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import av
+import speech_recognition as sr
 from streamlit_webrtc import WebRtcMode, webrtc_streamer, AudioProcessorBase
 from datetime import datetime
 from textwrap import dedent
@@ -15,16 +16,17 @@ if not GOOGLE_API_KEY:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Function to generate personalized insights
-def get_personalized_insights():
+# Function to transcribe audio using SpeechRecognition
+def transcribe_audio_file(audio_file):
+    recognizer = sr.Recognizer()
     try:
-        prompt = "Generate a motivational quote for a care provider supporting trauma patients."
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+            transcription = recognizer.recognize_google(audio_data)
+        return transcription
     except Exception as e:
-        st.error(f"Error generating insights: {e}")
-        return "Keep making a difference!"
+        st.error(f"Error transcribing audio: {e}")
+        return "Transcription unavailable."
 
 # Function to generate AI-assisted analysis
 def ai_assisted_analysis(text):
@@ -43,29 +45,16 @@ def ai_assisted_analysis(text):
         st.error(f"Error generating analysis: {e}")
         return "Unable to analyze patient input."
 
-# Audio Processor for live transcription
-class AudioProcessor(AudioProcessorBase):
-    def __init__(self):
-        self.audio_queue = []
-        self.transcription = ""
-
-    def recv_audio(self, frame: av.AudioFrame):
-        audio_bytes = frame.to_ndarray().tobytes()
-        self.audio_queue.append(audio_bytes)
-        return frame
-
-    def transcribe_audio(self):
-        try:
-            audio_data = b"".join(self.audio_queue)
-            self.audio_queue.clear()
-            prompt = "Transcribe this audio data."
-            model = genai.GenerativeModel('gemini-pro')
-            response = model.generate_content(prompt, audio=audio_data)
-            self.transcription = response.text.strip()
-        except Exception as e:
-            st.error(f"Error transcribing audio: {e}")
-            self.transcription = "Transcription unavailable."
-        return self.transcription
+# Function to generate personalized insights
+def get_personalized_insights():
+    try:
+        prompt = "Generate a motivational quote for a care provider supporting trauma patients."
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"Error generating insights: {e}")
+        return "Keep making a difference!"
 
 # Main app
 menu = st.sidebar.selectbox(
@@ -94,36 +83,24 @@ elif menu == "Screening":
     st.write("**Multimodal Input**")
     text_input = st.text_area("Describe the patient's current situation:")
 
-    st.subheader("Audio Recording")
-    audio_processor = AudioProcessor()
-    webrtc_streamer(
-        key="audio",
-        mode=WebRtcMode.SENDRECV,  # Updated to use the correct enumeration
-        audio_processor_factory=lambda: audio_processor
+    st.subheader("Audio Upload")
+    audio_file = st.file_uploader(
+        "Upload an audio file (optional):", type=["wav", "mp3"]
     )
 
-    st.subheader("Image Upload")
-    image_file = st.file_uploader("Upload an image (optional):", type=["jpg", "png"])
-
-    st.subheader("Audio/Video Upload")
-    media_file = st.file_uploader(
-        "Upload an audio or video file (optional):",
-        type=["mp3", "wav", "mp4", "mkv", "avi"]
-    )
-
-    if media_file is not None:
-        st.write(f"Uploaded file: {media_file.name}")
-        if media_file.type.startswith("audio/"):
-            st.audio(media_file, format="audio/mp3")
-        elif media_file.type.startswith("video/"):
-            st.video(media_file)
-
-    if st.button("Submit Screening Data"):
-        transcription = audio_processor.transcribe_audio()
+    transcription = ""
+    if audio_file is not None:
+        st.write(f"Uploaded file: {audio_file.name}")
+        transcription = transcribe_audio_file(audio_file)
         st.write("**Transcription:**", transcription)
 
-        analysis = ai_assisted_analysis(transcription or text_input)
+    # Analyze Text or Transcription
+    analysis_text = transcription or text_input
+    if analysis_text.strip():
+        analysis = ai_assisted_analysis(analysis_text)
         st.write("**AI-Assisted Analysis:**", analysis)
+    else:
+        st.warning("Please provide either a text input or an audio file for analysis.")
 
 elif menu == "Referral":
     st.title("Referral Page")
