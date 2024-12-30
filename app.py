@@ -6,12 +6,9 @@ import random
 import requests
 
 # Placeholder for Google Gemini API integration
-# Define the endpoint and headers (customize based on your API configuration)
-GEMINI_API_ENDPOINT = "https://gemini-api.google.com/v2"
-HEADERS = {
-    "Authorization": "Bearer YOUR_API_KEY",
-    "Content-Type": "application/json"
-}
+# Set up the API key
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', st.secrets.get("GOOGLE_API_KEY"))
+genai.configure(api_key=GOOGLE_API_KEY)
 
 # Page Configuration
 st.set_page_config(page_title="Anchor App", layout="wide")
