@@ -5,3 +5,5 @@ scipy
 google-generativeai
 Pillow
 plotly
+av
+requests
