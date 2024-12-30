@@ -5,8 +5,6 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from textwrap import dedent
 import pandas as pd
-import tempfile
-from pydub import AudioSegment
 
 # Initialize Google Gemini API
 load_dotenv()
@@ -17,17 +15,6 @@ if not GOOGLE_API_KEY:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Function to preprocess audio with PyDub and convert to WAV
-def preprocess_audio(audio_bytes):
-    try:
-        temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-        audio.export(temp_audio_path, format="wav")
-        return temp_audio_path
-    except Exception as e:
-        st.error(f"Error processing audio file: {e}")
-        return None
-
 # Function to transcribe audio using Google Gemini
 def transcribe_audio_with_gemini(audio_file_path):
     try:
@@ -36,7 +23,7 @@ def transcribe_audio_with_gemini(audio_file_path):
                 Please transcribe the following audio file and return the text transcription:
             """)
             model = genai.GenerativeModel("gemini-pro")
-            response = model.generate_content(prompt)
+            response = model.generate_content(prompt, audio=audio_file.read())
             return response.text.strip()
     except Exception as e:
         st.error(f"Error transcribing audio: {e}")
@@ -66,7 +53,8 @@ def generate_downloadable_report(transcription, analysis):
         "Content": [transcription, analysis]
     }
     df = pd.DataFrame(report)
-    return df.to_csv(index=False)
+    csv = df.to_csv(index=False)
+    return csv
 
 # Streamlit app
 st.title("Audio Transcription and Chat with Gemini")
@@ -77,34 +65,39 @@ st.subheader("Audio Recording")
 audio_bytes = audio_recorder()
 audio_file_path = None
 if audio_bytes:
-    audio_file_path = preprocess_audio(audio_bytes)
-    if audio_file_path:
-        st.audio(audio_bytes, format="audio/wav")
-        st.success("Audio recorded successfully!")
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    audio_file_path = os.path.join(upload_dir, "audio_recorded.wav")
+    with open(audio_file_path, "wb") as f:
+        f.write(audio_bytes)
+    st.audio(audio_bytes, format="audio/wav")
+    st.success("Audio recorded successfully!")
 
 # File Upload
 st.subheader("Upload Audio File")
 uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3"])
 if uploaded_file:
-    temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-    audio = AudioSegment.from_file(uploaded_file, format="mp3")
-    audio.export(temp_audio_path, format="wav")
-    audio_file_path = temp_audio_path
+    audio_file_path = os.path.join("uploads", uploaded_file.name)
+    with open(audio_file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
     st.audio(uploaded_file, format="audio/wav")
     st.success("File uploaded successfully!")
 
 # Transcription and Analysis
 if audio_file_path:
     if st.button("Transcribe and Analyze"):
-        transcription = transcribe_audio_with_gemini(audio_file_path)
-        st.write("**Transcription:**", transcription)
+        st.session_state.transcription = transcribe_audio_with_gemini(audio_file_path)
+        st.write("**Transcription:**", st.session_state.transcription)
 
-        if transcription:
-            analysis = ai_assisted_analysis(transcription)
-            st.write("**AI-Assisted Analysis:**", analysis)
+        if st.session_state.transcription:
+            st.session_state.analysis = ai_assisted_analysis(st.session_state.transcription)
+            st.write("**AI-Assisted Analysis:**", st.session_state.analysis)
 
-            # Generate downloadable report
-            report_csv = generate_downloadable_report(transcription, analysis)
+        # Generate downloadable report
+        if st.session_state.transcription and st.session_state.analysis:
+            report_csv = generate_downloadable_report(
+                st.session_state.transcription, st.session_state.analysis
+            )
             st.download_button(
                 label="Download Report",
                 data=report_csv,
