@@ -5,6 +5,8 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from textwrap import dedent
 import pandas as pd
+from pydub import AudioSegment
+import tempfile
 
 # Initialize Google Gemini API
 load_dotenv()
@@ -15,6 +17,17 @@ if not GOOGLE_API_KEY:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
+# Function to preprocess audio with PyDub and convert to WAV
+def preprocess_audio(audio_file_path):
+    try:
+        audio = AudioSegment.from_file(audio_file_path)
+        processed_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+        audio.export(processed_audio_path, format="wav")
+        return processed_audio_path
+    except Exception as e:
+        st.error(f"Error processing audio file: {e}")
+        return None
+
 # Function to transcribe audio using Google Gemini
 def transcribe_audio_with_gemini(audio_file_path):
     try:
@@ -23,7 +36,7 @@ def transcribe_audio_with_gemini(audio_file_path):
                 Please transcribe the following audio file and return the text transcription:
             """)
             model = genai.GenerativeModel("gemini-pro")
-            response = model.generate_content(prompt, audio=audio_file.read())
+            response = model.generate_content(prompt)
             return response.text.strip()
     except Exception as e:
         st.error(f"Error transcribing audio: {e}")
@@ -58,7 +71,7 @@ def generate_downloadable_report(transcription, analysis):
 
 # Streamlit app
 st.title("Audio Transcription and Chat with Gemini")
-st.write("Record, upload, or analyze audio using Google Gemini.")
+st.write("Record, upload, or analyze audio using PyDub and Google Gemini.")
 
 # Audio Recorder
 st.subheader("Audio Recording")
@@ -67,15 +80,15 @@ audio_file_path = None
 if audio_bytes:
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
-    audio_file_path = os.path.join(upload_dir, "audio_recorded.wav")
+    audio_file_path = os.path.join(upload_dir, "audio_recorded.mp3")
     with open(audio_file_path, "wb") as f:
         f.write(audio_bytes)
-    st.audio(audio_bytes, format="audio/wav")
+    st.audio(audio_bytes, format="audio/mp3")
     st.success("Audio recorded successfully!")
 
 # File Upload
 st.subheader("Upload Audio File")
-uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3"])
+uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3", "m4a"])
 if uploaded_file:
     audio_file_path = os.path.join("uploads", uploaded_file.name)
     with open(audio_file_path, "wb") as f:
@@ -85,22 +98,24 @@ if uploaded_file:
 
 # Transcription and Analysis
 if audio_file_path:
-    if st.button("Transcribe and Analyze"):
-        st.session_state.transcription = transcribe_audio_with_gemini(audio_file_path)
-        st.write("**Transcription:**", st.session_state.transcription)
+    processed_audio_path = preprocess_audio(audio_file_path)
+    if processed_audio_path:
+        if st.button("Transcribe and Analyze"):
+            st.session_state.transcription = transcribe_audio_with_gemini(processed_audio_path)
+            st.write("**Transcription:**", st.session_state.transcription)
 
-        if st.session_state.transcription:
-            st.session_state.analysis = ai_assisted_analysis(st.session_state.transcription)
-            st.write("**AI-Assisted Analysis:**", st.session_state.analysis)
+            if st.session_state.transcription:
+                st.session_state.analysis = ai_assisted_analysis(st.session_state.transcription)
+                st.write("**AI-Assisted Analysis:**", st.session_state.analysis)
 
-        # Generate downloadable report
-        if st.session_state.transcription and st.session_state.analysis:
-            report_csv = generate_downloadable_report(
-                st.session_state.transcription, st.session_state.analysis
-            )
-            st.download_button(
-                label="Download Report",
-                data=report_csv,
-                file_name="transcription_analysis_report.csv",
-                mime="text/csv"
-            )
+            # Generate downloadable report
+            if st.session_state.transcription and st.session_state.analysis:
+                report_csv = generate_downloadable_report(
+                    st.session_state.transcription, st.session_state.analysis
+                )
+                st.download_button(
+                    label="Download Report",
+                    data=report_csv,
+                    file_name="transcription_analysis_report.csv",
+                    mime="text/csv"
+                )
