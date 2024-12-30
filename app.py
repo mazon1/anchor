@@ -3,6 +3,7 @@ import google.generativeai as genai
 import os
 import av
 from streamlit_webrtc import WebRtcMode, webrtc_streamer
+from streamlit_webrtc import AudioProcessorBase
 from datetime import datetime
 from textwrap import dedent
 import random
