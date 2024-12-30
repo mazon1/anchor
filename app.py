@@ -2,8 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import av
-from streamlit_webrtc import WebRtcMode, webrtc_streamer
-from streamlit_webrtc import AudioProcessorBase
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, AudioProcessorBase
 from datetime import datetime
 from textwrap import dedent
 import random
@@ -105,6 +104,19 @@ elif menu == "Screening":
 
     st.subheader("Image Upload")
     image_file = st.file_uploader("Upload an image (optional):", type=["jpg", "png"])
+
+    st.subheader("Audio/Video Upload")
+    media_file = st.file_uploader(
+        "Upload an audio or video file (optional):",
+        type=["mp3", "wav", "mp4", "mkv", "avi"]
+    )
+
+    if media_file is not None:
+        st.write(f"Uploaded file: {media_file.name}")
+        if media_file.type.startswith("audio/"):
+            st.audio(media_file, format="audio/mp3")
+        elif media_file.type.startswith("video/"):
+            st.video(media_file)
 
     if st.button("Submit Screening Data"):
         transcription = audio_processor.transcribe_audio()
