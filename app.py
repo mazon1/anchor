@@ -7,6 +7,7 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer, AudioProcessorBase
 from datetime import datetime
 from textwrap import dedent
 import random
+import pandas as pd
 
 # Set up the API key
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', st.secrets.get("GOOGLE_API_KEY"))
@@ -56,6 +57,40 @@ def get_personalized_insights():
         st.error(f"Error generating insights: {e}")
         return "Keep making a difference!"
 
+# Function to create a downloadable report
+def generate_downloadable_report(transcription, analysis):
+    report = {
+        "Section": ["Transcription", "AI Analysis"],
+        "Content": [transcription, analysis]
+    }
+    df = pd.DataFrame(report)
+    csv = df.to_csv(index=False)
+    return csv
+
+# Audio Processor for live transcription
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.audio_queue = []
+        self.transcription = ""
+
+    def recv_audio(self, frame: av.AudioFrame):
+        audio_bytes = frame.to_ndarray().tobytes()
+        self.audio_queue.append(audio_bytes)
+        return frame
+
+    def transcribe_audio(self):
+        try:
+            audio_data = b"".join(self.audio_queue)
+            self.audio_queue.clear()
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(audio_data) as source:
+                audio_content = recognizer.record(source)
+                self.transcription = recognizer.recognize_google(audio_content)
+        except Exception as e:
+            st.error(f"Error transcribing live audio: {e}")
+            self.transcription = "Transcription unavailable."
+        return self.transcription
+
 # Main app
 menu = st.sidebar.selectbox(
     "Navigation", ["Home", "Screening", "Referral", "Follow-Up", "Admin Dashboard"]
@@ -83,6 +118,14 @@ elif menu == "Screening":
     st.write("**Multimodal Input**")
     text_input = st.text_area("Describe the patient's current situation:")
 
+    st.subheader("Audio Recording")
+    audio_processor = AudioProcessor()
+    webrtc_streamer(
+        key="live_audio",
+        mode=WebRtcMode.SENDRECV,
+        audio_processor_factory=lambda: audio_processor
+    )
+
     st.subheader("Audio Upload")
     audio_file = st.file_uploader(
         "Upload an audio file (optional):", type=["wav", "mp3"]
@@ -96,11 +139,25 @@ elif menu == "Screening":
 
     # Analyze Text or Transcription
     analysis_text = transcription or text_input
+    analysis = ""
     if analysis_text.strip():
         analysis = ai_assisted_analysis(analysis_text)
         st.write("**AI-Assisted Analysis:**", analysis)
     else:
         st.warning("Please provide either a text input or an audio file for analysis.")
+
+    # Generate Downloadable Report
+    if st.button("Generate Report"):
+        if transcription or analysis:
+            csv = generate_downloadable_report(transcription, analysis)
+            st.download_button(
+                label="Download Report",
+                data=csv,
+                file_name="screening_report.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("No data available for the report.")
 
 elif menu == "Referral":
     st.title("Referral Page")
