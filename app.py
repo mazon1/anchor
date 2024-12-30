@@ -1,62 +1,106 @@
 import streamlit as st
 from datetime import datetime
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+import av
 import random
-from streamlit_webrtc import webrtc_streamer
+import requests
 
-# Page configuration
+# Placeholder for Google Gemini API integration
+# Define the endpoint and headers (customize based on your API configuration)
+GEMINI_API_ENDPOINT = "https://gemini-api.google.com/v2"
+HEADERS = {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json"
+}
+
+# Page Configuration
 st.set_page_config(page_title="Anchor App", layout="wide")
 
-# Synthetic Data Generators
-def generate_story():
-    emotions = ["hopeful", "anxious", "grateful", "struggling"]
-    events = [
-        "held a space for a patient's recovery milestone",
-        "collaborated with peers to solve a challenging case",
-        "provided emotional support during a difficult session",
-        "celebrated a patient's small but significant victory",
-    ]
-    return f"Today, feeling {random.choice(emotions)}, you {random.choice(events)}."
+# Generate Personalized Insights
+@st.cache_data
+def get_motivational_quote():
+    response = requests.post(
+        GEMINI_API_ENDPOINT + "/generate-text",
+        headers=HEADERS,
+        json={"prompt": "Generate a motivational quote for a care provider."}
+    )
+    return response.json().get("text", "Keep making a difference!")
 
-# Sidebar Navigation
-menu = st.sidebar.selectbox("Navigation", ["Home", "Screening", "Referral", "Follow-Up", "Admin Dashboard"])
+# Audio Processor for Live Transcription
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        self.audio_queue = []
+        self.transcription = ""
+
+    def recv_audio(self, frame: av.AudioFrame):
+        audio_bytes = frame.to_ndarray().tobytes()
+        self.audio_queue.append(audio_bytes)
+        return frame
+
+    def transcribe_audio(self):
+        # Convert audio data to text using Gemini API
+        audio_data = b"".join(self.audio_queue)
+        self.audio_queue.clear()
+        response = requests.post(
+            GEMINI_API_ENDPOINT + "/transcribe-audio",
+            headers=HEADERS,
+            files={"audio": audio_data}
+        )
+        self.transcription = response.json().get("transcription", "Transcription unavailable.")
+        return self.transcription
+
+# Core Pages
+menu = st.sidebar.selectbox(
+    "Navigation", ["Home", "Screening", "Referral", "Follow-Up", "Admin Dashboard"]
+)
 
 if menu == "Home":
     st.title("Welcome to Anchor")
     st.subheader("Your Dashboard")
 
     st.write("**Personalized Insights**")
-    st.info(random.choice([
-        "You are making a difference one step at a time.",
-        "Your work is vital to our community.",
-        "Small acts of kindness have a big impact."
-    ]))
+    st.info(get_motivational_quote())
 
     st.subheader("Community Highlights")
     for _ in range(3):
-        st.write(f"- {generate_story()}")
+        st.write(f"- Today, feeling {random.choice(['hopeful', 'anxious', 'grateful'])}, you {random.choice(['supported a patient', 'collaborated with peers', 'celebrated a small victory'])}.")
 
 elif menu == "Screening":
     st.title("Screening Page")
 
-    st.write("Use multimodal inputs to gather insights.")
+    # Multimodal Input
+    st.write("Use multimodal inputs for comprehensive screening.")
     text_input = st.text_area("Describe the patient's current situation:")
-    st.subheader("Audio Recording")
-    audio_data = webrtc_streamer(key="audio")
 
+    st.subheader("Audio Recording")
+    audio_processor = AudioProcessor()
+    webrtc_streamer(key="audio", mode="sendrecv", audio_processor_factory=lambda: audio_processor)
+
+    st.subheader("Image Upload")
     image_file = st.file_uploader("Upload an image (optional):", type=["jpg", "png"])
-    
+
     if st.button("Submit Screening Data"):
-        st.success("Screening data submitted successfully!")
+        transcription = audio_processor.transcribe_audio()
+        st.write("**Transcription:**", transcription)
+
+        # AI-Assisted Analysis (Emotions/Risks)
+        response = requests.post(
+            GEMINI_API_ENDPOINT + "/analyze-text",
+            headers=HEADERS,
+            json={"text": transcription}
+        )
+        analysis = response.json().get("analysis", "No analysis available.")
+        st.write("**AI Analysis:**", analysis)
 
 elif menu == "Referral":
     st.title("Referral Page")
-
     st.write("Provide personalized recommendations and manage referrals.")
+
     st.subheader("Resource Recommendations")
     st.write("- Local Counseling Center")
     st.write("- Shelter Nearby")
 
-    st.subheader("Track Referrals")
+    st.subheader("Referral Tracking")
     st.table({
         "Referral ID": ["R001", "R002"],
         "Status": ["Pending", "Completed"],
@@ -95,4 +139,4 @@ elif menu == "Admin Dashboard":
 
 # Footer
 st.write("---")
-st.write("Powered by Streamlit")
+st.write("Powered by Streamlit and Google Gemini")
