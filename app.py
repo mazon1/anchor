@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import os
 import av
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+from streamlit_webrtc import WebRtcMode, webrtc_streamer
 from datetime import datetime
 from textwrap import dedent
 import random
@@ -96,7 +96,11 @@ elif menu == "Screening":
 
     st.subheader("Audio Recording")
     audio_processor = AudioProcessor()
-    webrtc_streamer(key="audio", mode="sendrecv", audio_processor_factory=lambda: audio_processor)
+    webrtc_streamer(
+        key="audio",
+        mode=WebRtcMode.SENDRECV,  # Updated to use the correct enumeration
+        audio_processor_factory=lambda: audio_processor
+    )
 
     st.subheader("Image Upload")
     image_file = st.file_uploader("Upload an image (optional):", type=["jpg", "png"])
